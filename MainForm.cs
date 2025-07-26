@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -9,6 +10,9 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
+using WinFormsTimer = System.Windows.Forms.Timer;
+using ThreadingTimer = System.Threading.Timer;
 
 namespace EscapeGameControllerGUI
 {
@@ -36,14 +40,9 @@ namespace EscapeGameControllerGUI
         private int currentSceneIndex = 0;
 
         // Contrôles UI
-        // private Button btnStartServer;
-        // private Button btnStopServer;
         private Button btnStartGame;
         private Button btnNextScene;
         private Button btnResetGame;
-        // private Button btnSaveOrder;
-        // private Button btnLoadOrder;
-        // private Label lblServerStatus;
         private Label lblClientsConnected;
         private Label lblCurrentScene;
         private ListBox lstAvailableScenes;
@@ -54,285 +53,445 @@ namespace EscapeGameControllerGUI
         private Button btnMoveDown;
         private Button btnClearOrder;
         private RichTextBox txtLog;
-        // private ComboBox cmbGoToScene;
-        // private Button btnGoToScene;
         private ProgressBar progressGame;
+        WinFormsTimer animationTimer = new WinFormsTimer();
+        private Panel sceneCountCard;
+        private Panel progressCard;
 
         public MainForm()
         {
             InitializeComponent();
             LoadDefaultSceneOrder();
             UpdateUI();
-
             StartServer();
+
+            // Timer pour les animations
+            animationTimer.Interval = 50;
+            animationTimer.Tick += AnimationTimer_Tick;
+            animationTimer.Start();
+        }
+
+        private void AnimationTimer_Tick(object sender, EventArgs e)
+        {
+            // Mise à jour de l'indicateur de connexion avec effet pulsant
+            if (connectedClients.Count > 0)
+            {
+                int alpha = (int)(127 + 128 * Math.Sin(DateTime.Now.Millisecond * Math.PI * 2 / 1000));
+                lblClientsConnected.ForeColor = Color.FromArgb(alpha, 34, 139, 34);
+            }
         }
 
         private void InitializeComponent()
         {
             this.SuspendLayout();
 
-            // Configuration de la fenêtre principale
-            this.Text = "Contrôle Escape Game - Interface Maître";
-            this.Size = new Size(1000, 700);
+            // Configuration de la fenêtre principale - Style clair et moderne
+            this.Text = "ESCAPE GAME MASTER CONTROL";
+            this.Size = new Size(1400, 900);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
-            this.BackColor = Color.FromArgb(240, 240, 240);
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.BackColor = Color.FromArgb(248, 249, 250);
+            this.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
 
-            // Panel serveur (en haut)
-            // Panel panelServer = new Panel();
-            // panelServer.Location = new Point(10, 10);
-            // panelServer.Size = new Size(960, 80);
-            // panelServer.BorderStyle = BorderStyle.FixedSingle;
-            // panelServer.BackColor = Color.White;
+            // Barre de titre personnalisée
+            Panel titleBar = new Panel();
+            titleBar.Size = new Size(1400, 50);
+            titleBar.Location = new Point(0, 0);
+            titleBar.BackColor = Color.White;
+            titleBar.MouseDown += TitleBar_MouseDown;
 
-            // Label lblServerTitle = new Label();
-            // lblServerTitle.Text = "SERVEUR DE CONTRÔLE";
-            // lblServerTitle.Font = new Font("Arial", 12, FontStyle.Bold);
-            // lblServerTitle.Location = new Point(10, 10);
-            // lblServerTitle.Size = new Size(200, 25);
+            // Ombre pour la barre de titre
+            titleBar.Paint += (s, e) =>
+            {
+                using (SolidBrush shadowBrush = new SolidBrush(Color.FromArgb(30, 0, 0, 0)))
+                {
+                    e.Graphics.FillRectangle(shadowBrush, 0, titleBar.Height - 2, titleBar.Width, 2);
+                }
+            };
 
-            // btnStartServer = new Button();
-            // btnStartServer.Text = "▶ DÉMARRER SERVEUR";
-            // btnStartServer.Location = new Point(10, 40);
-            // btnStartServer.Size = new Size(150, 30);
-            // btnStartServer.BackColor = Color.FromArgb(76, 175, 80);
-            // btnStartServer.ForeColor = Color.White;
-            // btnStartServer.FlatStyle = FlatStyle.Flat;
-            // btnStartServer.Font = new Font("Arial", 9, FontStyle.Bold);
-            // btnStartServer.Click += BtnStartServer_Click;
+            Label titleLabel = new Label();
+            titleLabel.Text = "⚡ ESCAPE GAME MASTER CONTROL";
+            titleLabel.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            titleLabel.ForeColor = Color.FromArgb(52, 58, 64);
+            titleLabel.Location = new Point(20, 15);
+            titleLabel.Size = new Size(400, 25);
 
-            // btnStopServer = new Button();
-            // btnStopServer.Text = "⏹ ARRÊTER SERVEUR";
-            // btnStopServer.Location = new Point(170, 40);
-            // btnStopServer.Size = new Size(150, 30);
-            // btnStopServer.BackColor = Color.FromArgb(244, 67, 54);
-            // btnStopServer.ForeColor = Color.White;
-            // btnStopServer.FlatStyle = FlatStyle.Flat;
-            // btnStopServer.Font = new Font("Arial", 9, FontStyle.Bold);
-            // btnStopServer.Click += BtnStopServer_Click;
-            // btnStopServer.Enabled = false;
+            Button closeBtn = new Button();
+            closeBtn.Text = "×";
+            closeBtn.Size = new Size(50, 50);
+            closeBtn.Location = new Point(1350, 0);
+            closeBtn.BackColor = Color.Transparent;
+            closeBtn.ForeColor = Color.FromArgb(108, 117, 125);
+            closeBtn.FlatStyle = FlatStyle.Flat;
+            closeBtn.FlatAppearance.BorderSize = 0;
+            closeBtn.Font = new Font("Segoe UI", 18F, FontStyle.Bold);
+            closeBtn.Click += (s, e) => this.Close();
+            closeBtn.MouseEnter += (s, e) => closeBtn.BackColor = Color.FromArgb(220, 53, 69);
+            closeBtn.MouseEnter += (s, e) => closeBtn.ForeColor = Color.White;
+            closeBtn.MouseLeave += (s, e) => closeBtn.BackColor = Color.Transparent;
+            closeBtn.MouseLeave += (s, e) => closeBtn.ForeColor = Color.FromArgb(108, 117, 125);
 
-            // lblServerStatus = new Label();
-            // lblServerStatus.Text = "Statut: Arrêté";
-            // lblServerStatus.Location = new Point(340, 45);
-            // lblServerStatus.Size = new Size(150, 20);
-            // lblServerStatus.Font = new Font("Arial", 9, FontStyle.Bold);
-            // lblServerStatus.ForeColor = Color.Red;
+            titleBar.Controls.AddRange(new Control[] { titleLabel, closeBtn });
 
-            lblClientsConnected = new Label();
-            lblClientsConnected.Text = "Clients connectés: 0";
-            lblClientsConnected.Location = new Point(10, 10);
-            lblClientsConnected.Size = new Size(150, 20);
-            lblClientsConnected.Font = new Font("Arial", 9);
+            // Header avec statistiques - Style dashboard clair
+            Panel headerPanel = CreateLightPanel(new Point(20, 70), new Size(1360, 120));
 
-            // panelServer.Controls.AddRange(new Control[] { lblServerTitle, btnStartServer, btnStopServer, lblServerStatus, lblClientsConnected });
-            // panelServer.Controls.AddRange(new Control[] { lblClientsConnected });
+            // Status cards modernes et claires
+            Panel connectionCard = CreateStatusCard("CONNEXIONS", "0", Color.FromArgb(40, 167, 69), new Point(30, 20));
+            sceneCountCard = CreateStatusCard("SCÈNES", currentSceneOrder.Count.ToString(), Color.FromArgb(255, 193, 7), new Point(280, 20));
+            progressCard = CreateStatusCard("PROGRESSION", "0%", Color.FromArgb(0, 123, 255), new Point(530, 20));
 
-            // Panel configuration des scènes (gauche)
-            Panel panelScenes = new Panel();
-            panelScenes.Location = new Point(10, 100);
-            panelScenes.Size = new Size(470, 350);
-            panelScenes.BorderStyle = BorderStyle.FixedSingle;
-            panelScenes.BackColor = Color.White;
+            lblClientsConnected = (Label)connectionCard.Controls[1]; // Récupération du label de valeur
 
-            Label lblScenesTitle = new Label();
-            lblScenesTitle.Text = "CONFIGURATION DES SCÈNES";
-            lblScenesTitle.Font = new Font("Arial", 11, FontStyle.Bold);
-            lblScenesTitle.Location = new Point(10, 10);
-            lblScenesTitle.Size = new Size(250, 25);
+            headerPanel.Controls.AddRange(new Control[] { connectionCard, sceneCountCard, progressCard });
 
-            Label lblAvailable = new Label();
-            lblAvailable.Text = "Scènes disponibles:";
-            lblAvailable.Location = new Point(10, 40);
-            lblAvailable.Size = new Size(120, 20);
-            lblAvailable.Font = new Font("Arial", 9);
+            // Section principale avec layout en grille
+            Panel mainGrid = new Panel();
+            mainGrid.Location = new Point(20, 210);
+            mainGrid.Size = new Size(1360, 500);
+            mainGrid.BackColor = Color.Transparent;
 
-            lstAvailableScenes = new ListBox();
-            lstAvailableScenes.Location = new Point(10, 60);
-            lstAvailableScenes.Size = new Size(180, 200);
-            lstAvailableScenes.Font = new Font("Arial", 9);
+            // Panel configuration scènes - Style propre
+            Panel scenesPanel = CreateLightPanel(new Point(0, 0), new Size(650, 500));
+
+            Label scenesTitle = new Label();
+            scenesTitle.Text = "⚙️ CONFIGURATION DES SCÈNES";
+            scenesTitle.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            scenesTitle.ForeColor = Color.FromArgb(52, 58, 64);
+            scenesTitle.Location = new Point(25, 25);
+            scenesTitle.Size = new Size(400, 25);
+
+            // Listes avec style clair
+            lstAvailableScenes = CreateLightListBox(new Point(25, 80), new Size(250, 300));
             lstAvailableScenes.Items.AddRange(availableScenes.ToArray());
 
-            Label lblOrder = new Label();
-            lblOrder.Text = "Ordre du jeu:";
-            lblOrder.Location = new Point(280, 40);
-            lblOrder.Size = new Size(100, 20);
-            lblOrder.Font = new Font("Arial", 9);
+            lstSceneOrder = CreateLightListBox(new Point(375, 80), new Size(250, 300));
 
-            lstSceneOrder = new ListBox();
-            lstSceneOrder.Location = new Point(280, 60);
-            lstSceneOrder.Size = new Size(180, 200);
-            lstSceneOrder.Font = new Font("Arial", 9);
+            Label availableLabel = CreateLabel("DISPONIBLES", new Point(25, 60), Color.FromArgb(40, 167, 69));
+            Label orderLabel = CreateLabel("SÉQUENCE", new Point(375, 60), Color.FromArgb(255, 193, 7));
 
-            // Boutons de gestion des scènes
-            btnAddScene = new Button();
-            btnAddScene.Text = "➤";
-            btnAddScene.Location = new Point(200, 100);
-            btnAddScene.Size = new Size(70, 30);
-            btnAddScene.Font = new Font("Arial", 12, FontStyle.Bold);
+            // Boutons de contrôle avec style propre
+            Panel controlButtons = new Panel();
+            controlButtons.Location = new Point(290, 150);
+            controlButtons.Size = new Size(70, 200);
+            controlButtons.BackColor = Color.Transparent;
+
+            btnAddScene = CreateLightButton("▶", new Point(0, 0), new Size(60, 40), Color.FromArgb(40, 167, 69));
+            btnRemoveScene = CreateLightButton("◀", new Point(0, 50), new Size(60, 40), Color.FromArgb(220, 53, 69));
+            btnMoveUp = CreateLightButton("▲", new Point(0, 100), new Size(60, 40), Color.FromArgb(0, 123, 255));
+            btnMoveDown = CreateLightButton("▼", new Point(0, 150), new Size(60, 40), Color.FromArgb(0, 123, 255));
+
             btnAddScene.Click += BtnAddScene_Click;
-
-            btnRemoveScene = new Button();
-            btnRemoveScene.Text = "✕";
-            btnRemoveScene.Location = new Point(200, 140);
-            btnRemoveScene.Size = new Size(70, 30);
-            btnRemoveScene.Font = new Font("Arial", 12, FontStyle.Bold);
             btnRemoveScene.Click += BtnRemoveScene_Click;
-
-            btnMoveUp = new Button();
-            btnMoveUp.Text = "▲";
-            btnMoveUp.Location = new Point(200, 180);
-            btnMoveUp.Size = new Size(70, 30);
-            btnMoveUp.Font = new Font("Arial", 12, FontStyle.Bold);
             btnMoveUp.Click += BtnMoveUp_Click;
-
-            btnMoveDown = new Button();
-            btnMoveDown.Text = "▼";
-            btnMoveDown.Location = new Point(200, 220);
-            btnMoveDown.Size = new Size(70, 30);
-            btnMoveDown.Font = new Font("Arial", 12, FontStyle.Bold);
             btnMoveDown.Click += BtnMoveDown_Click;
 
-            btnClearOrder = new Button();
-            btnClearOrder.Text = "Vider";
-            btnClearOrder.Location = new Point(280, 270);
-            btnClearOrder.Size = new Size(80, 25);
+            controlButtons.Controls.AddRange(new Control[] { btnAddScene, btnRemoveScene, btnMoveUp, btnMoveDown });
+
+            btnClearOrder = CreateLightButton("RESET", new Point(375, 400), new Size(100, 40), Color.FromArgb(220, 53, 69));
             btnClearOrder.Click += BtnClearOrder_Click;
 
-            // btnSaveOrder = new Button();
-            // btnSaveOrder.Text = "Sauvegarder";
-            // btnSaveOrder.Location = new Point(280, 300);
-            // btnSaveOrder.Size = new Size(80, 25);
-            // btnSaveOrder.Click += BtnSaveOrder_Click;
-
-            // btnLoadOrder = new Button();
-            // btnLoadOrder.Text = "Charger";
-            // btnLoadOrder.Location = new Point(380, 300);
-            // btnLoadOrder.Size = new Size(80, 25);
-            // btnLoadOrder.Click += BtnLoadOrder_Click;
-
-            // panelScenes.Controls.AddRange(new Control[] {
-            //     lblScenesTitle, lblAvailable, lstAvailableScenes, lblOrder, lstSceneOrder,
-            //     btnAddScene, btnRemoveScene, btnMoveUp, btnMoveDown, btnClearOrder, btnSaveOrder, btnLoadOrder
-            // });
-            panelScenes.Controls.AddRange(new Control[] {
-                lblScenesTitle, lblAvailable, lstAvailableScenes, lblOrder, lstSceneOrder,
-                btnAddScene, btnRemoveScene, btnMoveUp, btnMoveDown, btnClearOrder
+            scenesPanel.Controls.AddRange(new Control[] {
+                scenesTitle, lstAvailableScenes, lstSceneOrder,
+                availableLabel, orderLabel, controlButtons, btnClearOrder
             });
 
-            // Panel contrôle du jeu (droite)
-            Panel panelControl = new Panel();
-            panelControl.Location = new Point(500, 100);
-            panelControl.Size = new Size(470, 350);
-            panelControl.BorderStyle = BorderStyle.FixedSingle;
-            panelControl.BackColor = Color.White;
+            // Panel contrôle de jeu - Style command center clair
+            Panel controlPanel = CreateLightPanel(new Point(670, 0), new Size(690, 500));
 
-            Label lblControlTitle = new Label();
-            lblControlTitle.Text = "CONTRÔLE DU JEU";
-            lblControlTitle.Font = new Font("Arial", 11, FontStyle.Bold);
-            lblControlTitle.Location = new Point(10, 10);
-            lblControlTitle.Size = new Size(200, 25);
+            Label controlTitle = new Label();
+            controlTitle.Text = "🎮 CONTRÔLE DE JEU";
+            controlTitle.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            controlTitle.ForeColor = Color.FromArgb(52, 58, 64);
+            controlTitle.Location = new Point(25, 25);
+            controlTitle.Size = new Size(400, 25);
 
-            btnStartGame = new Button();
-            btnStartGame.Text = "METTRE A JOUR";
-            btnStartGame.Location = new Point(10, 50);
-            btnStartGame.Size = new Size(200, 40);
-            btnStartGame.BackColor = Color.FromArgb(76, 175, 80);
-            btnStartGame.ForeColor = Color.White;
-            btnStartGame.FlatStyle = FlatStyle.Flat;
-            btnStartGame.Font = new Font("Arial", 10, FontStyle.Bold);
+            // Boutons de contrôle principaux - Style clair
+            btnStartGame = CreateMainButton("🚀 DÉMARRER", new Point(25, 80), new Size(200, 60), Color.FromArgb(40, 167, 69));
+            btnNextScene = CreateMainButton("⏭️ SUIVANT", new Point(245, 80), new Size(200, 60), Color.FromArgb(0, 123, 255));
+            btnResetGame = CreateMainButton("🔄 RESET", new Point(465, 80), new Size(200, 60), Color.FromArgb(255, 193, 7));
+
             btnStartGame.Click += BtnStartGame_Click;
-
-            btnNextScene = new Button();
-            btnNextScene.Text = "SCÈNE SUIVANTE";
-            btnNextScene.Location = new Point(250, 50);
-            btnNextScene.Size = new Size(200, 40);
-            btnNextScene.BackColor = Color.FromArgb(33, 150, 243);
-            btnNextScene.ForeColor = Color.White;
-            btnNextScene.FlatStyle = FlatStyle.Flat;
-            btnNextScene.Font = new Font("Arial", 10, FontStyle.Bold);
             btnNextScene.Click += BtnNextScene_Click;
-
-            btnResetGame = new Button();
-            btnResetGame.Text = "RÉINITIALISER";
-            btnResetGame.Location = new Point(10, 100);
-            btnResetGame.Size = new Size(200, 40);
-            btnResetGame.BackColor = Color.FromArgb(255, 152, 0);
-            btnResetGame.ForeColor = Color.White;
-            btnResetGame.FlatStyle = FlatStyle.Flat;
-            btnResetGame.Font = new Font("Arial", 10, FontStyle.Bold);
             btnResetGame.Click += BtnResetGame_Click;
 
-            // // Aller à une scène spécifique
-            // Label lblGoTo = new Label();
-            // lblGoTo.Text = "Aller à la scène:";
-            // lblGoTo.Location = new Point(10, 150);
-            // lblGoTo.Size = new Size(100, 20);
+            // Panneau de statut avancé
+            Panel statusPanel = CreateLightPanel(new Point(25, 170), new Size(640, 120));
 
-            // cmbGoToScene = new ComboBox();
-            // cmbGoToScene.Location = new Point(10, 170);
-            // cmbGoToScene.Size = new Size(150, 25);
-            // cmbGoToScene.DropDownStyle = ComboBoxStyle.DropDownList;
-
-            // btnGoToScene = new Button();
-            // btnGoToScene.Text = "Aller";
-            // btnGoToScene.Location = new Point(170, 170);
-            // btnGoToScene.Size = new Size(60, 25);
-            // btnGoToScene.Click += BtnGoToScene_Click;
-
-            // Statut du jeu
             lblCurrentScene = new Label();
-            lblCurrentScene.Text = "Scène actuelle: Aucune";
-            lblCurrentScene.Location = new Point(10, 210);
-            lblCurrentScene.Size = new Size(400, 20);
-            lblCurrentScene.Font = new Font("Arial", 9, FontStyle.Bold);
+            lblCurrentScene.Text = "En attente...";
+            lblCurrentScene.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
+            lblCurrentScene.ForeColor = Color.FromArgb(52, 58, 64);
+            lblCurrentScene.Location = new Point(20, 20);
+            lblCurrentScene.Size = new Size(600, 30);
 
-            Label lblProgress = new Label();
-            lblProgress.Text = "Progression:";
-            lblProgress.Location = new Point(10, 240);
-            lblProgress.Size = new Size(80, 20);
+            progressGame = CreateLightProgressBar(new Point(20, 65), new Size(600, 30));
 
-            progressGame = new ProgressBar();
-            progressGame.Location = new Point(90, 240);
-            progressGame.Size = new Size(200, 20);
-            progressGame.Style = ProgressBarStyle.Continuous;
+            statusPanel.Controls.AddRange(new Control[] { lblCurrentScene, progressGame });
 
-            // panelControl.Controls.AddRange(new Control[] {
-            //     lblControlTitle, btnStartGame, btnNextScene, btnResetGame,
-            //     lblGoTo, cmbGoToScene, btnGoToScene, lblCurrentScene, lblProgress, progressGame
-            // });
-
-            panelControl.Controls.AddRange(new Control[] {
-                lblControlTitle, btnStartGame, btnNextScene, btnResetGame, lblCurrentScene, lblProgress, progressGame
+            controlPanel.Controls.AddRange(new Control[] {
+                controlTitle, btnStartGame, btnNextScene, btnResetGame, statusPanel
             });
 
-            // Log des événements (bas)
-            Panel panelLog = new Panel();
-            panelLog.Location = new Point(10, 460);
-            panelLog.Size = new Size(960, 180);
-            panelLog.BorderStyle = BorderStyle.FixedSingle;
-            panelLog.BackColor = Color.White;
+            mainGrid.Controls.AddRange(new Control[] { scenesPanel, controlPanel });
 
-            Label lblLogTitle = new Label();
-            lblLogTitle.Text = "JOURNAL DES ÉVÉNEMENTS";
-            lblLogTitle.Font = new Font("Arial", 11, FontStyle.Bold);
-            lblLogTitle.Location = new Point(10, 10);
-            lblLogTitle.Size = new Size(200, 25);
+            // Console de log - Style terminal clair
+            Panel logPanel = CreateLightPanel(new Point(20, 730), new Size(1360, 160));
+
+            Label logTitle = new Label();
+            logTitle.Text = "📟 CONSOLE";
+            logTitle.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            logTitle.ForeColor = Color.FromArgb(40, 167, 69);
+            logTitle.Location = new Point(25, 15);
+            logTitle.Size = new Size(200, 25);
 
             txtLog = new RichTextBox();
-            txtLog.Location = new Point(10, 35);
-            txtLog.Size = new Size(940, 135);
+            txtLog.Location = new Point(25, 45);
+            txtLog.Size = new Size(1310, 100);
+            txtLog.BackColor = Color.FromArgb(248, 249, 250);
+            txtLog.ForeColor = Color.FromArgb(52, 58, 64);
+            txtLog.BorderStyle = BorderStyle.FixedSingle;
+            txtLog.Font = new Font("Consolas", 9F);
             txtLog.ReadOnly = true;
-            txtLog.BackColor = Color.FromArgb(248, 248, 248);
-            txtLog.Font = new Font("Consolas", 8);
 
-            panelLog.Controls.AddRange(new Control[] { lblLogTitle, txtLog });
+            logPanel.Controls.AddRange(new Control[] { logTitle, txtLog });
 
-            // Ajouter tous les panels à la forme
-            this.Controls.AddRange(new Control[] { lblClientsConnected, panelScenes, panelControl, panelLog });
+            // Assemblage final
+            this.Controls.AddRange(new Control[] { titleBar, headerPanel, mainGrid, logPanel });
 
             this.ResumeLayout(false);
+        }
+
+        private Panel CreateLightPanel(Point location, Size size)
+        {
+            Panel panel = new Panel();
+            panel.Location = location;
+            panel.Size = size;
+            panel.BackColor = Color.White;
+
+            panel.Paint += (s, e) =>
+            {
+                // Bordure subtile
+                using (Pen borderPen = new Pen(Color.FromArgb(233, 236, 239), 1))
+                {
+                    e.Graphics.DrawRectangle(borderPen, 0, 0, panel.Width - 1, panel.Height - 1);
+                }
+
+                // Ombre légère
+                using (SolidBrush shadowBrush = new SolidBrush(Color.FromArgb(10, 0, 0, 0)))
+                {
+                    e.Graphics.FillRectangle(shadowBrush, 2, 2, panel.Width - 2, panel.Height - 2);
+                }
+            };
+
+            return panel;
+        }
+
+        private Panel CreateStatusCard(string title, string value, Color accentColor, Point location)
+        {
+            Panel card = new Panel();
+            card.Location = location;
+            card.Size = new Size(220, 90);
+            card.BackColor = Color.White;
+
+            card.Paint += (s, e) =>
+            {
+                // Bordure colorée en haut
+                using (SolidBrush brush = new SolidBrush(accentColor))
+                {
+                    e.Graphics.FillRectangle(brush, 0, 0, card.Width, 4);
+                }
+
+                // Bordure générale
+                using (Pen pen = new Pen(Color.FromArgb(233, 236, 239), 1))
+                {
+                    e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
+                }
+            };
+
+            Label titleLabel = new Label();
+            titleLabel.Text = title;
+            titleLabel.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
+            titleLabel.ForeColor = Color.FromArgb(108, 117, 125);
+            titleLabel.Location = new Point(15, 15);
+            titleLabel.Size = new Size(190, 18);
+
+            Label valueLabel = new Label();
+            valueLabel.Text = value;
+            valueLabel.Font = new Font("Segoe UI", 20F, FontStyle.Bold);
+            valueLabel.ForeColor = accentColor;
+            valueLabel.Location = new Point(15, 35);
+            valueLabel.Size = new Size(190, 35);
+
+            card.Controls.AddRange(new Control[] { titleLabel, valueLabel });
+            return card;
+        }
+
+        private ListBox CreateLightListBox(Point location, Size size)
+        {
+            ListBox listBox = new ListBox();
+            listBox.Location = location;
+            listBox.Size = size;
+            listBox.BackColor = Color.FromArgb(248, 249, 250);
+            listBox.ForeColor = Color.FromArgb(52, 58, 64);
+            listBox.BorderStyle = BorderStyle.FixedSingle;
+            listBox.Font = new Font("Segoe UI", 9F);
+            listBox.DrawMode = DrawMode.OwnerDrawFixed;
+            listBox.ItemHeight = 28;
+
+            listBox.DrawItem += (s, e) =>
+            {
+                if (e.Index < 0) return;
+
+                bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+
+                using (SolidBrush brush = new SolidBrush(isSelected ?
+                    Color.FromArgb(0, 123, 255) : Color.FromArgb(248, 249, 250)))
+                {
+                    e.Graphics.FillRectangle(brush, e.Bounds);
+                }
+
+                Color textColor = isSelected ? Color.White : Color.FromArgb(52, 58, 64);
+                using (SolidBrush textBrush = new SolidBrush(textColor))
+                {
+                    e.Graphics.DrawString(((ListBox)s).Items[e.Index].ToString(),
+                        listBox.Font, textBrush, e.Bounds.X + 10, e.Bounds.Y + 6);
+                }
+            };
+
+            return listBox;
+        }
+
+        private Label CreateLabel(string text, Point location, Color color)
+        {
+            Label label = new Label();
+            label.Text = text;
+            label.Location = location;
+            label.Size = new Size(200, 20);
+            label.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            label.ForeColor = color;
+            return label;
+        }
+
+        private Button CreateLightButton(string text, Point location, Size size, Color color)
+        {
+            Button btn = new Button();
+            btn.Text = text;
+            btn.Location = location;
+            btn.Size = size;
+            btn.BackColor = Color.White;
+            btn.ForeColor = color;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderColor = color;
+            btn.FlatAppearance.BorderSize = 2;
+            btn.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            btn.Cursor = Cursors.Hand;
+
+            btn.MouseEnter += (s, e) =>
+            {
+                btn.BackColor = color;
+                btn.ForeColor = Color.White;
+            };
+            btn.MouseLeave += (s, e) =>
+            {
+                btn.BackColor = Color.White;
+                btn.ForeColor = color;
+            };
+
+            return btn;
+        }
+
+        private Button CreateMainButton(string text, Point location, Size size, Color baseColor)
+        {
+            Button btn = new Button
+            {
+                Text = text,
+                Location = location,
+                Size = size,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+
+            btn.FlatAppearance.BorderSize = 0;
+
+            // Couleurs
+            Color originalColor = baseColor;
+            Color hoverColor = Color.FromArgb(
+                Math.Min(255, baseColor.R + 30),
+                Math.Min(255, baseColor.G + 30),
+                Math.Min(255, baseColor.B + 30)
+            );
+
+            bool isHovered = false;
+
+            btn.MouseEnter += (s, e) =>
+            {
+                isHovered = true;
+                btn.Invalidate(); // Force un redraw
+            };
+
+            btn.MouseLeave += (s, e) =>
+            {
+                isHovered = false;
+                btn.Invalidate(); // Force un redraw
+            };
+
+            btn.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+                // Ombre
+                using (SolidBrush shadowBrush = new SolidBrush(Color.FromArgb(40, 0, 0, 0)))
+                {
+                    e.Graphics.FillRectangle(shadowBrush, 2, 2, btn.Width - 4, btn.Height - 4);
+                }
+
+                // Fond
+                using (SolidBrush brush = new SolidBrush(isHovered ? hoverColor : originalColor))
+                {
+                    Rectangle rect = new Rectangle(0, 0, btn.Width - 2, btn.Height - 2);
+                    e.Graphics.FillRectangle(brush, rect);
+                }
+
+                // Texte
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    btn.Text,
+                    btn.Font,
+                    btn.ClientRectangle,
+                    btn.ForeColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                );
+            };
+
+            return btn;
+        }
+
+        private ProgressBar CreateLightProgressBar(Point location, Size size)
+        {
+            ProgressBar pb = new ProgressBar();
+            pb.Location = location;
+            pb.Size = size;
+            pb.Style = ProgressBarStyle.Continuous;
+            pb.BackColor = Color.FromArgb(233, 236, 239);
+            pb.ForeColor = Color.FromArgb(40, 167, 69);
+            return pb;
+        }
+
+        private void TitleBar_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                // Permettre le déplacement de la fenêtre
+                const int WM_NCLBUTTONDOWN = 0xA1;
+                const int HT_CAPTION = 0x2;
+
+                User32.ReleaseCapture();
+                User32.SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+            }
         }
 
         private void StartServer()
@@ -346,29 +505,16 @@ namespace EscapeGameControllerGUI
                 serverThread = new Thread(AcceptClients);
                 serverThread.Start();
 
-                // btnStartServer.Enabled = false;
-                // btnStopServer.Enabled = true;
-                // lblServerStatus.Text = "Statut: Démarré";
-                // lblServerStatus.ForeColor = Color.Green;
-
-                LogMessage("✅ Serveur démarré.", Color.Green);
+                LogMessage("🟢 Serveur démarré avec succès", Color.FromArgb(40, 167, 69));
                 UpdateGameControls();
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Erreur serveur: {ex.Message}", Color.Red);
+                LogMessage($"🔴 Erreur serveur: {ex.Message}", Color.FromArgb(220, 53, 69));
                 MessageBox.Show($"Erreur lors du démarrage du serveur: {ex.Message}", "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-        // private void BtnStartServer_Click(object sender, EventArgs e)
-        // {
-        //     StartServer();
-        // }
 
-        // private void BtnStopServer_Click(object sender, EventArgs e)
-        // {
-        //     StopServer();
-        // }
         private void BtnStartGame_Click(object sender, EventArgs e)
         {
             if (currentSceneOrder.Count == 0)
@@ -380,9 +526,8 @@ namespace EscapeGameControllerGUI
             currentSceneIndex = 0;
             string orderData = string.Join(",", currentSceneOrder);
             SendToAllClients($"SET_SCENE_ORDER:{orderData}");
-            //SendToAllClients("START_GAME");
 
-            LogMessage($"🎮 Jeu démarré avec {currentSceneOrder.Count} scènes", Color.Blue);
+            LogMessage($"🎮 Jeu démarré avec {currentSceneOrder.Count} scènes", Color.FromArgb(0, 123, 255));
             UpdateGameStatus();
         }
 
@@ -392,51 +537,23 @@ namespace EscapeGameControllerGUI
             {
                 SendToAllClients("NEXT_SCENE");
                 currentSceneIndex++;
-                LogMessage($"Passage à la scène suivante: {currentSceneOrder[currentSceneIndex]}", Color.Blue);
+                LogMessage($"⏭️ Passage à: {currentSceneOrder[currentSceneIndex]}", Color.FromArgb(0, 123, 255));
             }
             else
             {
-                // On est à la dernière scène
-                // LogMessage("⚠️ Déjà à la dernière scène du jeu", Color.Orange);
-                // if (MessageBox.Show("Vous êtes à la dernière scène. Voulez-vous terminer le jeu ?", 
-                //                 "Fin du jeu", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                {
-                    SendToAllClients("END_GAME");
-                    LogMessage("🏁 Jeu terminé", Color.Purple);
-                }
+                SendToAllClients("END_GAME");
+                LogMessage("🏁 Jeu terminé", Color.FromArgb(255, 193, 7));
             }
             UpdateGameStatus();
         }
 
-
         private void BtnResetGame_Click(object sender, EventArgs e)
         {
-            // if (MessageBox.Show("Êtes-vous sûr de vouloir réinitialiser le jeu ?", "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-            // {
-                SendToAllClients("RESET_GAME");
-                currentSceneIndex = 0;
-                LogMessage("🔄 Jeu réinitialisé", Color.Orange);
-                UpdateGameStatus();
-            // }
+            SendToAllClients("RESET_GAME");
+            currentSceneIndex = 0;
+            LogMessage("🔄 Jeu réinitialisé", Color.FromArgb(255, 193, 7));
+            UpdateGameStatus();
         }
-
-        // private void BtnGoToScene_Click(object sender, EventArgs e)
-        // {
-        //     if (cmbGoToScene.SelectedItem != null)
-        //     {
-        //         string sceneName = cmbGoToScene.SelectedItem.ToString();
-        //         SendToAllClients($"GOTO_SCENE:{sceneName}");
-
-        //         int sceneIndex = currentSceneOrder.IndexOf(sceneName);
-        //         if (sceneIndex >= 0)
-        //         {
-        //             currentSceneIndex = sceneIndex;
-        //         }
-
-        //         LogMessage($"🎯 Saut vers la scène: {sceneName}", Color.Purple);
-        //         UpdateGameStatus();
-        //     }
-        // }
 
         private void BtnAddScene_Click(object sender, EventArgs e)
         {
@@ -445,7 +562,7 @@ namespace EscapeGameControllerGUI
                 string selectedScene = lstAvailableScenes.SelectedItem.ToString();
                 currentSceneOrder.Add(selectedScene);
                 UpdateSceneOrderList();
-                LogMessage($"➕ Scène ajoutée: {selectedScene}", Color.DarkGreen);
+                LogMessage($"➕ Scène ajoutée: {selectedScene}", Color.FromArgb(40, 167, 69));
             }
         }
 
@@ -456,7 +573,7 @@ namespace EscapeGameControllerGUI
                 string removedScene = currentSceneOrder[lstSceneOrder.SelectedIndex];
                 currentSceneOrder.RemoveAt(lstSceneOrder.SelectedIndex);
                 UpdateSceneOrderList();
-                LogMessage($"➖ Scène supprimée: {removedScene}", Color.DarkRed);
+                LogMessage($"➖ Scène supprimée: {removedScene}", Color.FromArgb(220, 53, 69));
             }
         }
 
@@ -490,72 +607,8 @@ namespace EscapeGameControllerGUI
         {
             currentSceneOrder.Clear();
             UpdateSceneOrderList();
-            LogMessage("🗑 Ordre des scènes vidé", Color.Red);
+            LogMessage("🗑️ Séquence vidée", Color.FromArgb(220, 53, 69));
         }
-
-        // private void BtnSaveOrder_Click(object sender, EventArgs e)
-        // {
-        //     if (currentSceneOrder.Count == 0)
-        //     {
-        //         MessageBox.Show("Aucun ordre à sauvegarder !", "Attention", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        //         return;
-        //     }
-
-        //     SaveFileDialog saveDialog = new SaveFileDialog();
-        //     saveDialog.Filter = "Fichiers texte (*.txt)|*.txt";
-        //     saveDialog.DefaultExt = "txt";
-        //     saveDialog.FileName = "SceneOrder";
-
-        //     if (saveDialog.ShowDialog() == DialogResult.OK)
-        //     {
-        //         try
-        //         {
-        //             File.WriteAllLines(saveDialog.FileName, currentSceneOrder);
-        //             LogMessage($"💾 Ordre sauvegardé: {Path.GetFileName(saveDialog.FileName)}", Color.DarkBlue);
-        //             MessageBox.Show("Ordre sauvegardé avec succès !", "Succès", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        //         }
-        //         catch (Exception ex)
-        //         {
-        //             LogMessage($"❌ Erreur sauvegarde: {ex.Message}", Color.Red);
-        //             MessageBox.Show($"Erreur lors de la sauvegarde: {ex.Message}", "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        //         }
-        //     }
-        //     SendToAllClients("START_GAME");
-        // }
-
-        // private void BtnLoadOrder_Click(object sender, EventArgs e)
-        // {
-        //     OpenFileDialog openDialog = new OpenFileDialog();
-        //     openDialog.Filter = "Fichiers texte (*.txt)|*.txt";
-        //     openDialog.DefaultExt = "txt";
-
-        //     if (openDialog.ShowDialog() == DialogResult.OK)
-        //     {
-        //         try
-        //         {
-        //             string[] lines = File.ReadAllLines(openDialog.FileName);
-        //             currentSceneOrder.Clear();
-
-        //             foreach (string line in lines)
-        //             {
-        //                 string trimmed = line.Trim();
-        //                 if (!string.IsNullOrEmpty(trimmed))
-        //                 {
-        //                     currentSceneOrder.Add(trimmed);
-        //                 }
-        //             }
-
-        //             UpdateSceneOrderList();
-        //             LogMessage($"📂 Ordre chargé: {Path.GetFileName(openDialog.FileName)} ({currentSceneOrder.Count} scènes)", Color.DarkBlue);
-        //             MessageBox.Show($"Ordre chargé avec succès ! ({currentSceneOrder.Count} scènes)", "Succès", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        //         }
-        //         catch (Exception ex)
-        //         {
-        //             LogMessage($"❌ Erreur chargement: {ex.Message}", Color.Red);
-        //             MessageBox.Show($"Erreur lors du chargement: {ex.Message}", "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        //         }
-        //     }
-        // }
 
         private void AcceptClients()
         {
@@ -572,36 +625,37 @@ namespace EscapeGameControllerGUI
                         }
 
                         string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                        LogMessage($"🔌 Nouveau client connecté: {clientIP}", Color.Green);
+                        LogMessage($"🔌 Client connecté: {clientIP}", Color.FromArgb(40, 167, 69));
 
-                        this.Invoke(new Action(() => {
-                            lblClientsConnected.Text = $"Clients connectés: {connectedClients.Count}";
+                        this.Invoke(new Action(() =>
+                        {
+                            lblClientsConnected.Text = connectedClients.Count.ToString();
                             UpdateGameControls();
                         }));
 
                         Thread clientThread = new Thread(() => HandleClient(client));
-                        clientThread.IsBackground = true; // Thread en arrière-plan
+                        clientThread.IsBackground = true;
                         clientThread.Start();
                     }
                 }
                 catch (ObjectDisposedException)
                 {
-                    // Le serveur a été fermé, c'est normal
                     break;
                 }
                 catch (SocketException ex)
                 {
-                    if (isRunning) // Ne logger que si on n'est pas en train d'arrêter
-                        LogMessage($"❌ Erreur socket: {ex.Message}", Color.Red);
+                    if (isRunning)
+                        LogMessage($"🔴 Erreur socket: {ex.Message}", Color.FromArgb(220, 53, 69));
                     break;
                 }
                 catch (Exception ex)
                 {
                     if (isRunning)
-                        LogMessage($"❌ Erreur acceptation client: {ex.Message}", Color.Red);
+                        LogMessage($"🔴 Erreur acceptation: {ex.Message}", Color.FromArgb(220, 53, 69));
                 }
             }
         }
+
         private void HandleClient(TcpClient client)
         {
             string clientIP = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
@@ -615,11 +669,8 @@ namespace EscapeGameControllerGUI
                 {
                     if (client.Client.Poll(0, SelectMode.SelectRead) && client.Client.Available == 0)
                     {
-                        // Le client s'est déconnecté proprement
-                        // LogMessage($"🔌 Déconnexion détectée (poll): {clientIP}", Color.Orange);
                         break;
                     }
-
                     if (stream.DataAvailable)
                     {
                         int bytesRead = stream.Read(buffer, 0, buffer.Length);
@@ -636,7 +687,7 @@ namespace EscapeGameControllerGUI
             }
             catch (Exception e)
             {
-                LogMessage($"❌ Erreur communication avec {clientIP}: {e.Message}", Color.Red);
+                LogMessage($"🔴 Erreur communication {clientIP}: {e.Message}", Color.FromArgb(220, 53, 69));
             }
             finally
             {
@@ -650,8 +701,8 @@ namespace EscapeGameControllerGUI
 
                 this.Invoke(new Action(() =>
                 {
-                    lblClientsConnected.Text = $"Clients connectés: {connectedClients.Count}";
-                    LogMessage($"🔌 Client déconnecté : {clientIP}", Color.Orange);
+                    lblClientsConnected.Text = connectedClients.Count.ToString();
+                    LogMessage($"🔌 Client déconnecté: {clientIP}", Color.FromArgb(255, 193, 7));
                     UpdateGameControls();
                 }));
 
@@ -659,10 +710,8 @@ namespace EscapeGameControllerGUI
             }
         }
 
-
         private void HandleClientMessage(string message, TcpClient client)
-        {   
-            // LogMessage($"Message reçu du client : {message}", Color.DarkGray);
+        {
             string[] parts = message.Split(':');
             if (parts.Length == 0) return;
 
@@ -674,17 +723,11 @@ namespace EscapeGameControllerGUI
                         string sceneName = parts[1];
                         if (int.TryParse(parts[2], out int sceneIndex) && int.TryParse(parts[3], out int totalScenes))
                         {
-                            // LogMessage($"Client a chargé la scène : {sceneName} ({sceneIndex}/{totalScenes})", Color.DarkGray);
                             currentSceneIndex = sceneIndex - 1;
                         }
-                        // else
-                        // {
-                        //     LogMessage($"Données SCENE_LOADED mal formatées.", Color.DarkGray);
-                        // }
                     }
                     break;
                 default:
-                    // LogMessage($"Commande inconnue reçue : {message}", Color.Red);
                     break;
             }
         }
@@ -714,7 +757,7 @@ namespace EscapeGameControllerGUI
                     }
                     catch (Exception e)
                     {
-                        LogMessage($"❌ Erreur envoi: {e.Message}", Color.Red);
+                        LogMessage($"🔴 Erreur envoi: {e.Message}", Color.FromArgb(220, 53, 69));
                         connectedClients.RemoveAt(i);
                     }
                 }
@@ -722,7 +765,7 @@ namespace EscapeGameControllerGUI
 
             this.Invoke(new Action(() =>
             {
-                lblClientsConnected.Text = $"Clients connectés: {connectedClients.Count}";
+                lblClientsConnected.Text = connectedClients.Count.ToString();
             }));
         }
 
@@ -733,10 +776,6 @@ namespace EscapeGameControllerGUI
             {
                 lstSceneOrder.Items.Add($"{i + 1}. {currentSceneOrder[i]}");
             }
-
-            // cmbGoToScene.Items.Clear();
-            // cmbGoToScene.Items.AddRange(currentSceneOrder.ToArray());
-
             UpdateGameStatus();
         }
 
@@ -747,39 +786,34 @@ namespace EscapeGameControllerGUI
                 if (currentSceneIndex < currentSceneOrder.Count)
                 {
                     string currentScene = currentSceneOrder[currentSceneIndex];
-                    lblCurrentScene.Text = $"Scène actuelle: {currentScene} ({currentSceneIndex + 1}/{currentSceneOrder.Count})";
-                    
-                    // Mise à jour de la barre de progression
+                    lblCurrentScene.Text = $"🎯 {currentScene} ({currentSceneIndex + 1}/{currentSceneOrder.Count})";
+
                     progressGame.Maximum = currentSceneOrder.Count;
                     progressGame.Value = currentSceneIndex + 1;
-                    
-                    // Vérifier si c'est la dernière scène
-                    // if (currentSceneIndex == currentSceneOrder.Count - 1)
-                    // {
-                    //     lblCurrentScene.Text += " (DERNIÈRE SCÈNE)";
-                    //     lblCurrentScene.ForeColor = Color.Red;
-                    // }
-                    // else
-                    // {
-                        lblCurrentScene.ForeColor = Color.Black;
-                    // }
+
+                    // Mise à jour du pourcentage dans la card
+                    int percentage = (int)((float)(currentSceneIndex + 1) / currentSceneOrder.Count * 100);
+                    ((Label)progressCard.Controls[1]).Text = $"{percentage}%";
                 }
                 else
                 {
-                    // Cette condition ne devrait plus jamais être atteinte avec la logique corrigée
-                    lblCurrentScene.Text = "Jeu terminé";
-                    lblCurrentScene.ForeColor = Color.Green;
+                    lblCurrentScene.Text = "🏁 JEU TERMINÉ";
                     progressGame.Value = progressGame.Maximum;
+
+                    ((Label)progressCard.Controls[1]).Text = "100%";
                 }
             }
             else
             {
-                lblCurrentScene.Text = "Scène actuelle: Aucune";
-                lblCurrentScene.ForeColor = Color.Black;
+                lblCurrentScene.Text = "⏸️ En attente de configuration...";
                 progressGame.Value = 0;
+
+                ((Label)progressCard.Controls[1]).Text = "0%";
             }
-            
-            // Mettre à jour l'état des boutons
+
+            // Mise à jour du nombre de scènes
+            ((Label)sceneCountCard.Controls[1]).Text = currentSceneOrder.Count.ToString();
+
             UpdateGameControls();
         }
 
@@ -791,34 +825,19 @@ namespace EscapeGameControllerGUI
             bool hasNextScene = currentSceneIndex < currentSceneOrder.Count - 1;
 
             btnStartGame.Enabled = serverRunning && clientsConnected && scenesConfigured;
-            btnNextScene.Enabled = serverRunning && clientsConnected && scenesConfigured; // Toujours activé pour permettre la fin
+            btnNextScene.Enabled = serverRunning && clientsConnected && scenesConfigured;
             btnResetGame.Enabled = serverRunning && clientsConnected;
-            // btnGoToScene.Enabled = serverRunning && clientsConnected && scenesConfigured;
-            
-            // Changer le texte du bouton selon le contexte
+
             if (scenesConfigured && hasNextScene)
             {
-                btnNextScene.Text = "SCÈNE SUIVANTE";
-                btnNextScene.BackColor = Color.FromArgb(33, 150, 243);
+                btnNextScene.Text = "⏭️ SUIVANT";
             }
-            // else if (scenesConfigured && !hasNextScene)
-            // {
-            //     btnNextScene.Text = "🏁 TERMINER JEU";
-            //     btnNextScene.BackColor = Color.FromArgb(156, 39, 176); // Violet pour indiquer la fin
-            // }
+            else if (scenesConfigured)
+            {
+                btnNextScene.Text = "🏁 FINIR";
+            }
         }
 
-        // private void GoToLastScene()
-        // {
-        //     if (currentSceneOrder.Count > 0)
-        //     {
-        //         currentSceneIndex = currentSceneOrder.Count - 1;
-        //         string lastScene = currentSceneOrder[currentSceneIndex];
-        //         SendToAllClients($"GOTO_SCENE:{lastScene}");
-        //         LogMessage($"🎯 Saut vers la dernière scène: {lastScene}", Color.Purple);
-        //         UpdateGameStatus();
-        //     }
-        // }
         private void UpdateUI()
         {
             UpdateSceneOrderList();
@@ -836,20 +855,19 @@ namespace EscapeGameControllerGUI
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
             txtLog.SelectionStart = txtLog.TextLength;
             txtLog.SelectionLength = 0;
-            txtLog.SelectionColor = Color.Gray;
+            txtLog.SelectionColor = Color.FromArgb(108, 117, 125);
             txtLog.AppendText($"[{timestamp}] ");
             txtLog.SelectionColor = color;
             txtLog.AppendText($"{message}\n");
             txtLog.ScrollToCaret();
         }
+
         private void StopServer()
         {
             try
             {
-                // Arrêter la boucle d'acceptation des clients
                 isRunning = false;
 
-                // Fermer toutes les connexions clients
                 lock (connectedClients)
                 {
                     foreach (TcpClient client in connectedClients)
@@ -860,49 +878,39 @@ namespace EscapeGameControllerGUI
                         }
                         catch (Exception ex)
                         {
-                            LogMessage($"⚠️ Erreur fermeture client: {ex.Message}", Color.Orange);
+                            LogMessage($"⚠️ Erreur fermeture: {ex.Message}", Color.FromArgb(255, 193, 7));
                         }
                     }
                     connectedClients.Clear();
                 }
 
-                // Arrêter le serveur TCP
                 if (server != null)
                 {
                     server.Stop();
                     server = null;
                 }
 
-                // Attendre que le thread serveur se termine
                 if (serverThread != null && serverThread.IsAlive)
                 {
-                    if (!serverThread.Join(5000)) // Attendre 5 secondes maximum
+                    if (!serverThread.Join(5000))
                     {
-                        serverThread.Abort(); // Force l'arrêt si nécessaire
+                        serverThread.Abort();
                     }
                     serverThread = null;
                 }
 
-                // Mettre à jour l'interface utilisateur
-                // btnStartServer.Enabled = true;
-                // btnStopServer.Enabled = false;
-                // lblServerStatus.Text = "Statut: Arrêté";
-                // lblServerStatus.ForeColor = Color.Red;
-                lblClientsConnected.Text = "Clients connectés: 0";
-
-                // Désactiver les contrôles de jeu
+                lblClientsConnected.Text = "0";
                 UpdateGameControls();
 
-                LogMessage("🛑 Serveur arrêté avec succès", Color.Red);
+                LogMessage("🛑 Serveur arrêté", Color.FromArgb(220, 53, 69));
             }
             catch (Exception ex)
             {
-                LogMessage($"❌ Erreur lors de l'arrêt du serveur: {ex.Message}", Color.Red);
+                LogMessage($"🔴 Erreur arrêt serveur: {ex.Message}", Color.FromArgb(220, 53, 69));
                 MessageBox.Show($"Erreur lors de l'arrêt du serveur: {ex.Message}", "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        // Ajoutez cette méthode pour gérer la fermeture du formulaire
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (isRunning)
@@ -919,11 +927,18 @@ namespace EscapeGameControllerGUI
                 }
                 else
                 {
-                    e.Cancel = true; // Annuler la fermeture
+                    e.Cancel = true;
                     return;
                 }
             }
+
+            if (animationTimer != null)
+            {
+                animationTimer.Stop();
+                animationTimer.Dispose();
+            }
         }
+
         private void LoadDefaultSceneOrder()
         {
             try
@@ -931,6 +946,7 @@ namespace EscapeGameControllerGUI
                 if (File.Exists("DefaultSceneOrder.txt"))
                 {
                     string[] lines = File.ReadAllLines("DefaultSceneOrder.txt");
+                    currentSceneOrder.Clear(); // Vider d'abord la liste par défaut
                     foreach (string line in lines)
                     {
                         string trimmed = line.Trim();
@@ -946,5 +962,15 @@ namespace EscapeGameControllerGUI
                 MessageBox.Show("Erreur lors du chargement de la scène par défaut : " + ex.Message);
             }
         }
+    }
+
+    // Classe pour les appels Windows API (déplacement de fenêtre)
+    public static class User32
+    {
+        [DllImport("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+
+        [DllImport("user32.dll")]
+        public static extern bool ReleaseCapture();
     }
 }
