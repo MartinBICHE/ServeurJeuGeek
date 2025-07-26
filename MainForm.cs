@@ -603,43 +603,65 @@ namespace EscapeGameControllerGUI
                 }
             }
         }
-        private void HandleClient(TcpClient client)
-        {
-            NetworkStream stream = client.GetStream();
-            byte[] buffer = new byte[1024];
 
-            while (client.Connected && isRunning)
+        private void HandleClientMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return;
+        
+            string[] parts = message.Split(':');
+            if (parts.Length == 0) return;
+        
+            string command = parts[0].Trim();
+        
+            switch (command)
             {
-                try
-                {
-                    if (stream.DataAvailable)
+                case "SCENE_LOADED":
+                    if (parts.Length >= 4)
                     {
-                        int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                        if (bytesRead > 0)
+                        string sceneName = parts[1].Trim();
+                        if (int.TryParse(parts[2], out int indexFromClient) &&
+                            int.TryParse(parts[3], out int totalScenes))
                         {
-                            string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                            LogMessage($"📨 Message reçu: {message}", Color.DarkGray);
+                            currentSceneIndex = indexFromClient - 1; // Index reçu est 1-based
+        
+                            Console.WriteLine($"[Serveur] ✅ Scène chargée par le client : {sceneName} ({indexFromClient}/{totalScenes})");
+                            Console.WriteLine($"[Serveur] 🔁 Index mis à jour localement : {currentSceneIndex}");
+                        }
+                        else
+                        {
+                            Console.WriteLine("[Serveur] ⚠ Erreur de parsing dans SCENE_LOADED");
                         }
                     }
-                    Thread.Sleep(100);
-                }
-                catch (Exception e)
-                {
-                    LogMessage($"❌ Erreur communication: {e.Message}", Color.Red);
+                    else
+                    {
+                        Console.WriteLine("[Serveur] ⚠ SCENE_LOADED: Format invalide (attendu : SCENE_LOADED:sceneName:index:count)");
+                    }
                     break;
-                }
+        
+                case "SCENE_ORDER_UPDATED":
+                    if (parts.Length >= 2 && int.TryParse(parts[1], out int sceneCount))
+                    {
+                        Console.WriteLine($"[Serveur] 📜 Nombre de scènes reçu du client : {sceneCount}");
+                        // Optionnel : tu pourrais synchroniser ici aussi l'ordre des scènes si nécessaire
+                    }
+                    else
+                    {
+                        Console.WriteLine("[Serveur] ⚠ Format invalide pour SCENE_ORDER_UPDATED");
+                    }
+                    break;
+        
+                case "GAME_FINISHED":
+                    Console.WriteLine("[Serveur] 🏁 Jeu terminé côté client (dernière scène atteinte).");
+                    break;
+        
+                case "ERROR":
+                    Console.WriteLine($"[Serveur] ❌ Erreur côté client : {string.Join(":", parts.Skip(1))}");
+                    break;
+        
+                default:
+                    Console.WriteLine($"[Serveur] ❓ Commande inconnue du client : {message}");
+                    break;
             }
-
-            lock (connectedClients)
-            {
-                connectedClients.Remove(client);
-            }
-
-            this.Invoke(new Action(() => {
-                lblClientsConnected.Text = $"Clients connectés: {connectedClients.Count}";
-                LogMessage("🔌 Client déconnecté", Color.Orange);
-                UpdateGameControls();
-            }));
         }
 
         private void SendToAllClients(string message)
