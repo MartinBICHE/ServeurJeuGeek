@@ -158,6 +158,7 @@ namespace EscapeGameControllerGUI
             scenesTitle.Text = "⚙️ CONFIGURATION DES SCÈNES";
             scenesTitle.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             scenesTitle.ForeColor = Color.FromArgb(52, 58, 64);
+            scenesTitle.BackColor = Color.FromArgb(245, 245, 245);
             scenesTitle.Location = new Point(25, 25);
             scenesTitle.Size = new Size(400, 25);
 
@@ -203,6 +204,7 @@ namespace EscapeGameControllerGUI
             controlTitle.Text = "🎮 CONTRÔLE DE JEU";
             controlTitle.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             controlTitle.ForeColor = Color.FromArgb(52, 58, 64);
+            controlTitle.BackColor = Color.FromArgb(245, 245, 245);
             controlTitle.Location = new Point(25, 25);
             controlTitle.Size = new Size(400, 25);
 
@@ -222,6 +224,7 @@ namespace EscapeGameControllerGUI
             lblCurrentScene.Text = "En attente...";
             lblCurrentScene.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
             lblCurrentScene.ForeColor = Color.FromArgb(52, 58, 64);
+            lblCurrentScene.BackColor = Color.FromArgb(245, 245, 245);
             lblCurrentScene.Location = new Point(20, 20);
             lblCurrentScene.Size = new Size(600, 30);
 
@@ -241,6 +244,7 @@ namespace EscapeGameControllerGUI
             Label logTitle = new Label();
             logTitle.Text = "📟 CONSOLE";
             logTitle.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            logTitle.BackColor = Color.FromArgb(245, 245, 245);
             logTitle.ForeColor = Color.FromArgb(40, 167, 69);
             logTitle.Location = new Point(25, 15);
             logTitle.Size = new Size(200, 25);
@@ -291,7 +295,7 @@ namespace EscapeGameControllerGUI
         {
             Panel card = new Panel();
             card.Location = location;
-            card.Size = new Size(220, 90);
+            card.Size = new Size(220, 80);
             card.BackColor = Color.White;
 
             card.Paint += (s, e) =>
@@ -366,6 +370,7 @@ namespace EscapeGameControllerGUI
         {
             Label label = new Label();
             label.Text = text;
+            label.BackColor = Color.FromArgb(245, 245, 245);
             label.Location = location;
             label.Size = new Size(200, 20);
             label.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
