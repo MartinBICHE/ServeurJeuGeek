@@ -26,16 +26,16 @@ namespace EscapeGameControllerGUI
         // Scènes disponibles
         private readonly List<string> availableScenes = new List<string>
         {
-            "MainMenu", "ChooseCharacter", "Platformer", "Lock",
-            "Labo+Dragon", "Animation1", "Donjon", "Stage 1",
-            "Stage 2", "Animation-1", "Animation2", "Animation2-2"
+            "Menu", "ChoixPersonnage", "Platformer", "Lock",
+            "Labo+Dragon", "EspionAnimation", "Donjon", "SpaceInvader",
+            "Boss", "EspaceAnimation", "ChambreAnimation"
         };
 
         private List<string> currentSceneOrder = new List<string>
         {
-            "MainMenu", "ChooseCharacter", "Platformer", "Lock",
-            "Labo+Dragon", "Animation1", "Stage 1",
-            "Stage 2", "Animation-1", "Animation2", "Animation2-2"
+            "Menu", "ChoixPersonnage", "Platformer", "Lock",
+            "Labo+Dragon", "EspionAnimation", "SpaceInvader",
+            "Boss", "EspaceAnimation", "ChambreAnimation"
         };
         private int currentSceneIndex = 0;
 
@@ -54,7 +54,6 @@ namespace EscapeGameControllerGUI
         private Button btnClearOrder;
         private RichTextBox txtLog;
         private ProgressBar progressGame;
-        WinFormsTimer animationTimer = new WinFormsTimer();
         private Panel sceneCountCard;
         private Panel progressCard;
 
@@ -64,23 +63,7 @@ namespace EscapeGameControllerGUI
             LoadDefaultSceneOrder();
             UpdateUI();
             StartServer();
-
-            // Timer pour les animations
-            animationTimer.Interval = 50;
-            animationTimer.Tick += AnimationTimer_Tick;
-            animationTimer.Start();
         }
-
-        private void AnimationTimer_Tick(object sender, EventArgs e)
-        {
-            // Mise à jour de l'indicateur de connexion avec effet pulsant
-            if (connectedClients.Count > 0)
-            {
-                int alpha = (int)(127 + 128 * Math.Sin(DateTime.Now.Millisecond * Math.PI * 2 / 1000));
-                lblClientsConnected.ForeColor = Color.FromArgb(alpha, 34, 139, 34);
-            }
-        }
-
         private void InitializeComponent()
         {
             this.SuspendLayout();
@@ -209,7 +192,7 @@ namespace EscapeGameControllerGUI
             controlTitle.Size = new Size(400, 25);
 
             // Boutons de contrôle principaux - Style clair
-            btnStartGame = CreateMainButton("🚀 DÉMARRER", new Point(25, 80), new Size(200, 60), Color.FromArgb(40, 167, 69));
+            btnStartGame = CreateMainButton("🚀 MET A JOUR SCENE", new Point(25, 80), new Size(200, 60), Color.FromArgb(40, 167, 69));
             btnNextScene = CreateMainButton("⏭️ SUIVANT", new Point(245, 80), new Size(200, 60), Color.FromArgb(0, 123, 255));
             btnResetGame = CreateMainButton("🔄 RESET", new Point(465, 80), new Size(200, 60), Color.FromArgb(255, 193, 7));
 
@@ -295,7 +278,7 @@ namespace EscapeGameControllerGUI
         {
             Panel card = new Panel();
             card.Location = location;
-            card.Size = new Size(220, 80);
+            card.Size = new Size(220, 85);
             card.BackColor = Color.White;
 
             card.Paint += (s, e) =>
@@ -325,7 +308,7 @@ namespace EscapeGameControllerGUI
             valueLabel.Font = new Font("Segoe UI", 20F, FontStyle.Bold);
             valueLabel.ForeColor = accentColor;
             valueLabel.Location = new Point(15, 35);
-            valueLabel.Size = new Size(190, 35);
+            valueLabel.Size = new Size(190, 45);
 
             card.Controls.AddRange(new Control[] { titleLabel, valueLabel });
             return card;
@@ -348,18 +331,39 @@ namespace EscapeGameControllerGUI
                 if (e.Index < 0) return;
 
                 bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+                
+                // Récupérer le texte original de l'item
+                string itemText = ((ListBox)s).Items[e.Index].ToString();
+                bool isMenu = itemText.Contains("Menu");
+                
+                // Couleurs différentes pour Menu
+                Color backgroundColor;
+                Color textColor;
+                
+                if (isMenu && s == lstSceneOrder)
+                {
+                    // Style spécial pour Menu dans la liste de séquence (couleur dorée/jaune)
+                    backgroundColor = isSelected ? Color.FromArgb(255, 193, 7) : Color.FromArgb(255, 248, 220);
+                    textColor = isSelected ? Color.White : Color.FromArgb(133, 100, 4);
+                }
+                else
+                {
+                    // Style normal pour les autres scènes
+                    backgroundColor = isSelected ? Color.FromArgb(0, 123, 255) : Color.FromArgb(248, 249, 250);
+                    textColor = isSelected ? Color.White : Color.FromArgb(52, 58, 64);
+                }
 
-                using (SolidBrush brush = new SolidBrush(isSelected ?
-                    Color.FromArgb(0, 123, 255) : Color.FromArgb(248, 249, 250)))
+                using (SolidBrush brush = new SolidBrush(backgroundColor))
                 {
                     e.Graphics.FillRectangle(brush, e.Bounds);
                 }
 
-                Color textColor = isSelected ? Color.White : Color.FromArgb(52, 58, 64);
+                // Modifier le texte affiché pour Menu dans la liste de séquence
+                string displayText = itemText;
+
                 using (SolidBrush textBrush = new SolidBrush(textColor))
                 {
-                    e.Graphics.DrawString(((ListBox)s).Items[e.Index].ToString(),
-                        listBox.Font, textBrush, e.Bounds.X + 10, e.Bounds.Y + 6);
+                    e.Graphics.DrawString(displayText, listBox.Font, textBrush, e.Bounds.X + 10, e.Bounds.Y + 6);
                 }
             };
 
@@ -498,7 +502,6 @@ namespace EscapeGameControllerGUI
                 User32.SendMessage(this.Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
             }
         }
-
         private void StartServer()
         {
             try
@@ -575,10 +578,19 @@ namespace EscapeGameControllerGUI
         {
             if (lstSceneOrder.SelectedIndex >= 0)
             {
-                string removedScene = currentSceneOrder[lstSceneOrder.SelectedIndex];
-                currentSceneOrder.RemoveAt(lstSceneOrder.SelectedIndex);
+                int selectedIndex = lstSceneOrder.SelectedIndex;
+                string selectedScene = currentSceneOrder[selectedIndex];
+                
+                // Vérifier si c'est Menu
+                if (selectedScene == "Menu")
+                {
+                    return;
+                }
+                
+                // Code existant pour supprimer
+                currentSceneOrder.RemoveAt(selectedIndex);
                 UpdateSceneOrderList();
-                LogMessage($"➖ Scène supprimée: {removedScene}", Color.FromArgb(220, 53, 69));
+                LogMessage($"➖ Scène supprimée: {selectedScene}", Color.FromArgb(220, 53, 69));
             }
         }
 
@@ -588,6 +600,28 @@ namespace EscapeGameControllerGUI
             if (selectedIndex > 0)
             {
                 string scene = currentSceneOrder[selectedIndex];
+                
+                // Empêcher de déplacer Menu
+                if (scene == "Menu")
+                {
+                    MessageBox.Show("La scène Menu doit rester en première position !", 
+                                "Action interdite", 
+                                MessageBoxButtons.OK, 
+                                MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                // Empêcher de placer une scène avant Menu
+                if (selectedIndex == 1 && currentSceneOrder[0] == "Menu")
+                {
+                    MessageBox.Show("Aucune scène ne peut être placée avant Menu !", 
+                                "Action interdite", 
+                                MessageBoxButtons.OK, 
+                                MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                // Code existant pour déplacer vers le haut
                 currentSceneOrder.RemoveAt(selectedIndex);
                 currentSceneOrder.Insert(selectedIndex - 1, scene);
                 UpdateSceneOrderList();
@@ -601,6 +635,18 @@ namespace EscapeGameControllerGUI
             if (selectedIndex >= 0 && selectedIndex < currentSceneOrder.Count - 1)
             {
                 string scene = currentSceneOrder[selectedIndex];
+                
+                // Empêcher de déplacer Menu
+                if (scene == "Menu")
+                {
+                    MessageBox.Show("La scène Menu doit rester en première position !", 
+                                "Action interdite", 
+                                MessageBoxButtons.OK, 
+                                MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                // Code existant pour déplacer vers le bas
                 currentSceneOrder.RemoveAt(selectedIndex);
                 currentSceneOrder.Insert(selectedIndex + 1, scene);
                 UpdateSceneOrderList();
@@ -610,9 +656,11 @@ namespace EscapeGameControllerGUI
 
         private void BtnClearOrder_Click(object sender, EventArgs e)
         {
+            // Vider la liste mais garder Menu
             currentSceneOrder.Clear();
+            currentSceneOrder.Add("Menu");
             UpdateSceneOrderList();
-            LogMessage("🗑️ Séquence vidée", Color.FromArgb(220, 53, 69));
+            LogMessage("🗑️ Séquence vidée (Menu conservé)", Color.FromArgb(220, 53, 69));
         }
 
         private void AcceptClients()
@@ -636,6 +684,7 @@ namespace EscapeGameControllerGUI
                         {
                             lblClientsConnected.Text = connectedClients.Count.ToString();
                             UpdateGameControls();
+                            BtnStartGame_Click(null, EventArgs.Empty);
                         }));
 
                         Thread clientThread = new Thread(() => HandleClient(client));
@@ -935,12 +984,6 @@ namespace EscapeGameControllerGUI
                     e.Cancel = true;
                     return;
                 }
-            }
-
-            if (animationTimer != null)
-            {
-                animationTimer.Stop();
-                animationTimer.Dispose();
             }
         }
 
